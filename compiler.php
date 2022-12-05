@@ -150,6 +150,106 @@ class SmallCode {
           }
         }
       } 
+    } elseif ($m[0] == 'json') {
+      if ($m[1] == 'import') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $var[$com] = (array)json_decode($var[$com]);
+      } elseif ($m[1] == 'export') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $var[$com] = json_encode($var[$com]);
+      } elseif ($m[1] == 'getValue') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if (!$this->isString($val[0])) {
+          if ($this->isString($val[1])) {
+            $var[explode(" ", $row)[1]] = $var[$val[0]][$this->cs($val[1])];
+          } else {
+            $var[explode(" ", $row)[1]] = $var[$val[0]][$var[$val[1]]];
+          }
+        }
+      }
+    } elseif ($m[0] == 'mysql') {
+      if ($m[1] == 'connect') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if ($this->isString($val[0]) && $this->isString($val[1]) && $this->isString($val[2])) {
+          if ($this->isString($val[3])) {
+            $var[explode(" ", $row)[1]] = new mysqli($this->cs($val[0]), $this->cs($val[1]), $this->cs($val[2]), $this->cs($val[3]));
+          } else {
+            $var[explode(" ", $row)[1]] = new mysqli($this->cs($val[0]), $this->cs($val[1]), $this->cs($val[2]), $var[$val[3]]);
+          }
+        }
+      } elseif ($m[1] == 'checkConnection') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        if (!$this->isString($com)) {
+          $var[explode(" ", $row)[1]] = $var[$com]->connect_error;
+        }
+      } elseif ($m[1] == 'cmd' || $m[1] == 'parse' || $m[1] == 'query') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if (!$this->isString($val[0])) {
+          if ($this->isString($val[1])) {
+            $cMySQL = $this->cs($val[1]);
+          } else {
+            $cMySQL = $var[$val[1]];
+          }
+          $res = $var[$val[0]]->query($cMySQL);
+          $returnArray = array();
+          if ($result->num_rows > 0) {
+            $count = 0;
+            while($row = $result->fetch_assoc()) {
+              $count++;
+              $returnArray[$count] = $row;
+            }
+          } else {
+            $returnArray[0] = false;
+          }
+          $var[explode(" ", $row)[1]] = $returnArray;
+        }
+      }
+    } elseif ($m[0] == 'HTTP') {
+      if ($m[1] == 'get') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        if ($this->isString($com)) {
+          $var[explode(" ", $row)[1]] = file_get_contents($this->cs($com));
+        } else {
+          $var[explode(" ", $row)[1]] = file_get_contents($var[$com]);
+        }
+      } elseif ($m[1] == 'post') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if ($this->isString($val[0])) { 
+          $uri = $this->cs($val[0]);
+        } else {
+          $uri = $var[$val[0]];
+        }
+        $body = http_build_query($val[1]);
+        $options = array(
+            'http' => array(
+                'header'  => "Content-type: application/json\r\n",
+                'method'  => 'POST',
+                'content' => $body
+            )
+        );
+        $context = stream_context_create($options);
+        $var[explode(" ", $row)[1]] = file_get_contents($url, false, $context);
+      }
     }
     return $var;
   }
@@ -293,12 +393,34 @@ class SmallCode {
                 }
               }
               $var[$ll[1]] = $a;
+            } elseif ($ll[2] == 'json') {
+              $a = explode('{', $row);
+              $b = explode('}', $row);
+              $str = str_replace($a[0], '', str_replace(end($b), '}', $row));
+              $var[$ll[1]] = json_decode($str, true);
             }
           } elseif ($ll[0] == "get") {
             if ($ll[2] == "from") {
               if ($ll[3] == "method") {
                 $var = $this->parseMethod($this->unificateString($ll, 4), $row, $var);
+              } elseif ($ll[3] == 'array') {
+                $arr = $ll[4];
+                $sys = explode('.', $arr);
+                $var[$ll[1]] = $var[$sys[0]][$sys[1]];
               }
+            }
+          } elseif ($ll[0] == 'take') {
+            $arr = $ll[2];
+            $sys = explode('.', $arr);
+            $var[$ll[1]] = $var[$sys[0]][$sys[1]];
+          } elseif ($ll[0] == 'put') {
+            $arr = $ll[1];
+            $sys = explode('.', $arr);
+            $str = explode("'", $row)[1];
+            if (!$this->isStrig($ll[1])) {
+              $var[$sys[0]][$sys[1]]$var[$ll[1]] = $var[$ll[1]];
+            } else {
+              $var[$sys[0]][$sys[1]]$var[$ll[1]] = $this->cs($str[1]);
             }
           } elseif ($ll[0] == "combine") {
             $a = explode('(', $row);
@@ -353,6 +475,8 @@ class SmallCode {
               echo explode("'", $row)[1];
             } elseif ($ll[1] == 'var') {
               echo $var[$ll[2]];
+            } elseif ($ll[1] == 'dump') {
+              var_dump($var[$ll[2]]);
             }
           }
         }
