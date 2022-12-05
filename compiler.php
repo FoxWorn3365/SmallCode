@@ -250,6 +250,67 @@ class SmallCode {
         $context = stream_context_create($options);
         $var[explode(" ", $row)[1]] = file_get_contents($url, false, $context);
       }
+    } elseif ($m[0] == 'session' && $m[1] == 'manager') {
+      if ($m[2] == 'inizialize') {
+        session_start();
+      } elseif ($m[2] == 'kill') {
+        session_destroy();
+      } elseif ($m[2] == 'set') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if (!$this->isString($val[0])) {
+          if ($this->isString($val[1])) {
+            $_SESSION[$var[$val[0]]] = $this->cs($val[1]);
+          } else {
+            $_SESSION[$var[$val[0]]] = $var[$val[1]];
+          }
+        } else {
+          if ($this->isString($val[1])) {
+            $_SESSION[$this->cs($val[0])] = $this->cs($val[1]);
+          } else {
+            $_SESSION[$this->cs($val[0])] = $var[$val[1]];
+          }
+        }
+      } elseif ($m[2] == 'get') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        if ($this->isString($com)) {
+          $var[explode(" ", $row)[1]] = $_SESSION[$this->cs($com)];
+        } else {
+          $var[explode(" ", $row)[1]] = $_SESSION[$var[$com]];
+        }
+      } elseif ($m[2] == 'check') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if ($this->isString($val[1])) {
+          $red = $this->cs($val[1]);
+        } else {
+          $red = $var[$val[1]];
+        }
+        if ($this->isString($val[0])) {
+          $st = $this->cs($val[0]);
+        } else {
+          $st = $var[$val[0]];
+        }
+        if (empty($st)) {
+          header("Location: {$st}");
+        }
+      }
+    } elseif ($m[0] == 'redirect') {
+      $b = explode('(', $row);
+      $c = explode(')', $b[1]);
+      $com = $c[0];
+      if ($this->isString($com)) {
+        $com = $this->cs($com);
+      } else {
+        $com = $var[$com];
+      }
+      header("Location: {$com}");
     }
     return $var;
   }
@@ -418,9 +479,9 @@ class SmallCode {
             $sys = explode('.', $arr);
             $str = explode("'", $row)[1];
             if (!$this->isStrig($ll[1])) {
-              $var[$sys[0]][$sys[1]]$var[$ll[1]] = $var[$ll[1]];
+              $var[$sys[0]][$sys[1]] = $var[$ll[1]];
             } else {
-              $var[$sys[0]][$sys[1]]$var[$ll[1]] = $this->cs($str[1]);
+              $var[$sys[0]][$sys[1]] = $this->cs($str[1]);
             }
           } elseif ($ll[0] == "combine") {
             $a = explode('(', $row);
