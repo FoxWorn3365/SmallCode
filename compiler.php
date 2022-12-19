@@ -24,6 +24,7 @@ class SmallCode {
   protected $loopElement;
   protected $index = 0;
   protected $config;
+  protected $spaceTracker = array();
 
   public function __construct($module) {
     $this->module = $module;
@@ -255,7 +256,7 @@ class SmallCode {
         session_start();
       } elseif ($m[2] == 'kill') {
         session_destroy();
-      } elseif ($m[2] == 'set') {
+      } elseif ($m[2] == 'set' || $m[2] == 'define') {
         $b = explode('(', $row);
         $c = explode(')', $b[1]);
         $com = $c[0];
@@ -297,8 +298,8 @@ class SmallCode {
         } else {
           $st = $var[$val[0]];
         }
-        if (empty($st)) {
-          header("Location: {$st}");
+        if (empty($_SESSION[$st])) {
+          header("Location: {$red}");
         }
       }
     } elseif ($m[0] == 'redirect') {
@@ -311,6 +312,43 @@ class SmallCode {
         $com = $var[$com];
       }
       header("Location: {$com}");
+    } elseif ($m[0] == 'globals') {
+      if ($m[1] == 'set' || $m[1] == 'define') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if ($this->isString($val[1])) {
+          $string = $this->cs($val[1]);
+        } else {
+          $string = $var[$val[1]];
+        }
+        $GLOBALS[$this->cs($val[0])] = $string;
+      } elseif ($m[1] == 'get') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $var[explode(" ", $row)[1]] = $GLOBALS[$this->cs($com)];
+      }
+    } elseif ($m[0] == 'hash') {
+      if ($m[1] == 'combine') {
+        $b = explode('(', $row);
+        $c = explode(')', $b[1]);
+        $com = $c[0];
+        $val = explode(', ', $com);
+        if ($this->isString($val[1])) {
+          $v = $this->cs($val[1]);
+        } else {
+          $v = $var[$val[1]];
+        }
+        $var[explode(" ", $row)[1]] = hash($this->cs($val[0]), $v);
+      }
+    } elseif ($m[0] == 'random') {
+      $b = explode('(', $row);
+      $c = explode(')', $b[1]);
+      $com = $c[0];
+      $val = explode(', ', $com);
+      $var[explode(" ", $row)[1]] = rand($this->cs($val[0]),  $this->cs($val[1]));
     }
     return $var;
   }
@@ -335,19 +373,19 @@ class SmallCode {
     file_put_contents('parsecode.log', file_get_contents('parsecode.log') . "\n[FoxCloud]|[ParseCode]{$a}: {$msg}");
   }
 
-  public function returnFormattedOutput($values) {
+  public function returnFormattedOutput($values = '') {
     $m = file_get_contents($this->module);
     if (empty($m)) {
       echo "ParseCode ERROR: Module {$this->module} doesn't exists";
       exit;
     }
     // Impostiamo delle variabili iniziali
-    $return;
+    $return = '';
     $started = false;
     $finished = false;
     $moduleInfoStart = false;
     $moduleInfoFinish = false;
-    $progenStart = false;
+    $start = false;
     $moduleInfo;
     $progen;
     $ll;
@@ -359,45 +397,34 @@ class SmallCode {
     $rows = preg_split('/\r\n|\r|\n/', $m);
     // Procediamo con il parsing
     for ($this->index = 0; $this->index < count($rows); $this->index++) {
+      if (stripos($rows[$this->index], ' ') !== false) {
+        $this->spaceTracker[$this->index] = substr_count(explode('<', $rows[$this->index])[0], ' ');
+      }
       $row = str_replace('  ', '', $rows[$this->index]);
+      $row = str_replace('||', '  ', $row);
       $ll = explode(' ', $row);
       $line = ($this->index + 1);
       if ($ll[0] == "//" || $ll[0] == "#") {
         continue;
       }
-      if (!$started) {
-        if ($row == 'Main:{') {
-          $started = true;
-        } else {
-          $this->log('SYNTAX ERROR -> Alla linea {$line}: il codice non è stato iniziato!');
-        }
+      if (!$start && $row == 'Parsing:()[') {
+        $start = true;
       }
-      if ($started && !$moduleInfoStart && $row == 'MetaInfo2:[[') {
-        $moduleInfoStart = true;
+      if ($start && $row == ']//,') {
+        $start = false;
+        continue;
       }
-      if ($started && $moduleInfoStart && $row == ']],') {
-        $moduleInfoFinish = true;
-      }
-      if ($started && $moduleInfoStart && !$moduleInfoFinish) {
-        $moduleInfo = $row;
-      }
-      if ($started && $moduleInfoStart && $moduleInfoFinish) {
-        if (!$progenStart && $row == 'Parsing:()[') {
-          $progenStart = true;
-        }
-        if ($progenStart && $row == ']//,') {
-          $progenEnd = true;
-        }
-        if ($progenStart && !$this->inizializedIf) {
+      if ($start) {
+        if ($start && !$this->inizializedIf) {
           $parseTh = true;
-        } elseif ($progenStart && $this->inizializedIf && $this->startedIf) {
+        } elseif ($start && $this->inizializedIf && $this->startedIf) {
           $parseTh = true;
         } else {
           $parseTh = false;
         }
 
         if ($parseTh) {
-          if ($this->startedIf) {
+          if ($this->startedIf && (explode(' ', $rows[$line])[0] == 'but' || explode(' ', $rows[$line])[0] == 'or')) {
             $this->startedIf = false;
             $this->inizializedIf = true;
             $this->ifEsau = true;
@@ -412,12 +439,30 @@ class SmallCode {
                 if ($m[1] == "input") {
                   // Importiamo dal modulo
                   $var[$nameVar] = $values[$m[2]];
-                }
+                } elseif ($m[1] == 'url') {
+                  if ($m[2] == 'post') {
+                    if (empty($m[3])) {
+                      $var[$nameVar] = (array)$_POST;
+                    } else {
+                      $var[$nameVar] = $_POST[$m[3]];
+                    }
+                  } elseif ($m[2] == 'get') {
+                   if (empty($m[3])) {
+                      $var[$nameVar] = (array)$_GET;
+                    } else {
+                      $var[$nameVar] = $_GET[$m[3]];
+                    }
+                  } elseif ($m[2] == 'server') {
+                   if (empty($m[3])) {
+                      $var[$nameVar] = (array)$_SERVER;
+                    } else {
+                      $var[$nameVar] = $_SERVER[$m[3]];
+                    }
+                  }
+                }  
+              } elseif ($ll[3] == "file" || $ll[3] == 'HTTP') {
+                $var[$nameVar] == file_get_contents($ll[4]);
               }
-            } elseif ($ll[3] == "file") {
-               $var[$nameVar] == file_get_contents($ll[4]);
-            } elseif ($ll[4] == "HTTP") {
-               $var[$nameVar] == file_get_contents($ll[4]);
             }
           } elseif ($ll[0] == "export") {
             $v = $var[$ll[1]];
@@ -539,15 +584,34 @@ class SmallCode {
             } elseif ($ll[1] == 'dump') {
               var_dump($var[$ll[2]]);
             }
+          } elseif ($ll[0] == 'call') {
+            if (!$this->isString($ll[1])) {
+              require $var[$ll[1]];
+            } else {
+              require explode("'", $row)[1];
+            }
+          } elseif ($ll[0] == 'parse') {
+            if (!$this->isString($ll[1])) {
+              $p = new SmallCode($var[$ll[1]]);
+            } else {
+              $p = new SmallCode(explode("'", $row)[1]);
+            }
+            if ($ll[2] == 'with') {
+              echo $p->returnFormattedOutput($var[$ll[3]]);
+            } else {
+              echo $p->returnFormattedOutput();
+            }
+          } elseif ($ll[0] == 'quit') {
+            die();
           }
         }
 
-        if ($ll[0] == "catch" && $progenStart) {
+        if ($ll[0] == "catch" && $start && $this->inizializedIf) {
           $this->inizializedIf = false;
-        } elseif ($ll[0] == "but" && $this->inizializedIf && !$this->startedIf && !$this->ifEsau && $progenStart) {
+        } elseif ($ll[0] == "but" && $this->inizializedIf && !$this->startedIf && !$this->ifEsau && $start) {
            $this->startedIf = true;
            continue;
-        } elseif (($ll[0] == "es" || $ll[0] == "or") && $progenStart) {
+        } elseif (($ll[0] == "if" || $ll[0] == "or") && $start) {
           if ($ll[0] == "or") {
             $this->startedIf = false;
           }
@@ -558,7 +622,7 @@ class SmallCode {
           } 
  
           $this->inizializedIf = true;
-          if ($ll[2] == 'as') {
+          if ($ll[2] == 'as' || $ll[2] == 'is') {
             if ($var[$ll[1]] == $str) {
               $this->startedIf = true;
             }
@@ -572,6 +636,10 @@ class SmallCode {
             }
           } elseif ($ll[2] == 'min') {
             if ($var[$ll[1]] < $str) {
+              $this->startedIf = true;
+            }
+          } elseif ($ll[2] == 'empty') {
+            if (empty($var[$ll[1]])) {
               $this->startedIf = true;
             }
           }
@@ -595,6 +663,13 @@ class SmallCode {
         } elseif ($ll[0] == 'break') {
           $this->loopOpen = false;
         }
+      } else {
+        if ($this->spaceTracker[$this->index] !== false) {
+          for ($i = 0; $i < $this->spaceTracker[$this->index]; $i++) {
+            echo ' ';
+          }
+        }
+        echo "{$row}\n";
       }
       
       if ($this->inLoop && !$this->loopOpen && $this->loopEach == $this->loopMax - 1) {
