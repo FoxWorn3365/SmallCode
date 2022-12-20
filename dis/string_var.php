@@ -1,0 +1,1 @@
+Può essere sia string che var
