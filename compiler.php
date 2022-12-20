@@ -249,10 +249,10 @@ class SmallCode {
             )
         );
         $context = stream_context_create($options);
-        $var[explode(" ", $row)[1]] = file_get_contents($url, false, $context);
+        $var[explode(" ", $row)[1]] = file_get_contents($uri, false, $context);
       }
     } elseif ($m[0] == 'session' && $m[1] == 'manager') {
-      if ($m[2] == 'inizialize') {
+      if ($m[2] == 'inizialize' || $m[2] == 'initialize') {
         session_start();
       } elseif ($m[2] == 'kill') {
         session_destroy();
