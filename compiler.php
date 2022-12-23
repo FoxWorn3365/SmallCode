@@ -542,10 +542,13 @@ class SmallCode {
             $var[$z[1]] = $text;
           } elseif ($ll[0] == "replace") {
             $text = explode(']', explode('[', $row)[1])[0];
+            $tempRow = $row;
             foreach ($var as $el => $val) {
-              $text = str_replace('{' . $el . '}', $val, $text);
+              if (!is_array($val)) {
+                $text = str_replace('{' . $el . '}', $val, $text);
+              }
             }
-            $z = explode(' then ', $row);
+            $z = explode(' then ', $tempRow);
             $var[$z[1]] = $text;
           } elseif ($ll[0] == "method") {
             $var = $this->parseMethod(str_replace('method ', '', $row), $row, $var);
