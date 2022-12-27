@@ -25,6 +25,13 @@ class SmallCode {
   protected $index = 0;
   protected $config;
   protected $spaceTracker = array();
+  protected $tempVar;
+  protected $methods = array();
+  protected string $returnCallFunction;
+  protected string $activeMethodDefinition;
+  protected $execMethod;
+  protected bool $nextStop = false;
+  protected bool $calledFromMethodClass = false;
 
   public function __construct($module) {
     $this->module = $module;
@@ -32,215 +39,141 @@ class SmallCode {
       $this->config = $config;
     }
   }
-  
-  protected function isString($string) {
-    if (!empty(explode("'", $string)[1])) {
+
+  protected function isSingleQuoted($string) {
+    $a = explode("'", $string);
+    if (empty($a[0]) && empty($a[count($a)-1])) {
       return true;
     }
     return false;
+  }
+
+  protected function isDoubleQuoted($string) {
+    $a = explode('"', $string);
+    if (empty($a[0]) && empty($a[count($a)-1])) {
+      return true;
+    }
+    return false;
+  }
+
+  
+  protected function isString($string) {
+    if ($this->isSingleQuoted($string) || $this->isDoubleQuoted($string)) {
+      return true;
+    }
+    return false;
+  }
+
+  protected function defineGetVar($v) {
+    $this->tempVar = $v; 
+  }
+
+  protected function get($string, $var = false) {
+    if (!$var) {
+      $var = $this->tempVar;
+    }
+    if ($this->isString($string)) {
+      return $this->cs($string);
+    } elseif (!$this->isString($string) && stripos($string, 'method ') !== false) {
+      $this->tempVar = $this->parseMethod(str_replace('method ', '', $string), $var, 'tempFoxReturnNotNull');
+      return $this->tempVar['tempFoxReturnNotNull'];
+    } elseif (!$this->isString($string) && stripos($string, 'method ') === false) {
+      if ($this->calledFromMethodClass) {
+        return $string;
+      } else {
+        return $var[$string];
+      }
+    } else {
+      return NULL;
+    }
   }
 
   protected function cs($string) {
     return str_replace("'", "", $string);
   }
 
-  protected function parseMethod($string, $row, $var) {
-    $string = explode('(', $string)[0];
-    $m = explode('.', $string); 
+  protected function parseMethod($string, $var, $setVar = 'tempFoxIntReturnNull') {
+    $this->calledFromMethodClass = true;
+    $this->defineGetVar($var);
+    $str = explode('(', $string);
+    $m = explode('.', $str[0]); 
+    $sendArg = explode(')', $str[1]);
+    $ccc = count($sendArg);
+    $sas = $sendArg[$ccc-2];
+    $arg = explode(', ', $sas);
     if ($m[0] == 'array') {
       // LAVORIAMO CON GLI ARRAY
-      if ($m[1] == 'getValue') {
-        // Recuperiamo subito le funzioni
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
+      if ($m[1] == 'getValue' || $m[1] == 'get') {
         // SINTASSI: array.getValue(<ARRAY>, <VALUE NAME>)
-        if ($this->isString($val[1])) {
-          $var[explode(" ", $row)[1]] = $var[$val[0]][$this->cs($val[1])];
-        } else {
-          $var[explode(" ", $row)[1]] = $var[$val[0]][$var[$val[1]]];
-        }
+        $var[$setVar] = $var[$this->get($arg[0])][$this->get($arg[1])];
       } elseif ($m[1] == 'push') {
         // Recuperiamo subito le funzioni
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if (!$this->isString($val[0])) {
-          if ($this->isString($val[1])) {
-            if ($this->isString($val[2])) {
-              $var[$val[0]][$this->cs($val[1])] = $this->cs($val[2]);
-            } else {
-              $var[$val[0]][$this->cs($val[1])] = $var[$val[2]];
-            }
-          } else {
-            if ($this->isString($val[2])) {
-              $var[$val[0]][$var[$val[1]]] = $this->cs($val[2]);
-            } else {
-              $var[$val[0]][$var[$val[1]]] = $var[$val[2]];
-            }
-          }
-        }
+        $var[$this->get($arg[0])][$this->get($arg[1])] = $this->get($arg[2]);
       } elseif ($m[1] == 'drop') {
         // Recuperiamo subito le funzioni
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $var[$com] = '';
+        $var[$this->get($arg[0])] = NULL;
       } elseif ($m[1] == 'count') {
         // Recuperiamo subito le funzioni
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $var[explode(" ", $row)[1]] = count($var[$com]);
+        $var[$setVar] = count($var[$this->get($arg[0])]);
       } elseif ($m[1] == 'print') {
-        // Recuperiamo subito le funzioni
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        foreach ($var[$com] as $key => $element) {
+        foreach ($var[$this->get($arg[0])] as $key => $element) {
           echo "$key => $element ";
         }
       }
     } elseif ($m[0] == 'loop') {
       if ($m[1] == 'getValue') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        if ($this->isString($com)) {
-          $lCount = 0;
-          foreach ($this->loopElement as $key => $va) {
-            if ($lCount == $this->loopEach) {
-              if ($this->cs($com) == 'key') {
-                $var[explode(" ", $row)[1]] = $key;
-              } elseif ($this->cs($com) == 'value') {
-                $var[explode(" ", $row)[1]] = $va;
-              }
+        $lCount = 0;
+        foreach ($this->loopElement as $key => $va) {
+          if ($lCount == $this->loopEach) {
+            if ($this->get($arg[0]) == 'key') {
+              $var[$setVar] = $key;
+            } elseif ($this->get($arg[0]) == 'value') {
+              $var[$setVar] = $va;
             }
-            $lCount++;
           }
+          $lCount++;
         }
       }
     } elseif ($m[0] == 'file') {
       if ($m[1] == 'open' || $m[1] == 'get') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        if ($this->isString($com)) {
-          $var[explode(" ", $row)[1]] = file_get_contents($this->cs($com));
-        } else {
-          $var[explode(" ", $row)[1]] = file_get_contenta($var[$com]);
-        }
-      } elseif ($m[1] == 'write') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if ($this->isString($val[0])) {
-          if ($this->isString($val[1])) {
-            file_put_contents($this->cs($val[0]), $this->cs($val[1]));
-          } else {
-            file_put_contents($this->cs($val[0]), $var[$val[1]]);
-          } 
-        } else {
-          if ($this->isString($val[1])) {
-            file_put_contents($var[$val[0]], $this->cs($val[1]));
-          } else {
-            file_put_contents($var[$val[0]], $var[$val[1]]);
-          }
-        }
-      } 
+        $var[$setVar] = file_get_contents($this->get($arg[0]));
+      } elseif ($m[1] == 'write' || $m[1] == 'set') {
+        file_put_contents($this->get($arg[0]), $this->get($arg[1]));
+      }
     } elseif ($m[0] == 'json') {
       if ($m[1] == 'import') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $var[$com] = (array)json_decode($var[$com]);
+        $var[$this->get($arg[0])] = (array)json_decode($var[$this->get($arg[0])]);
       } elseif ($m[1] == 'export') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $var[$com] = json_encode($var[$com]);
-      } elseif ($m[1] == 'getValue') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if (!$this->isString($val[0])) {
-          if ($this->isString($val[1])) {
-            $var[explode(" ", $row)[1]] = $var[$val[0]][$this->cs($val[1])];
-          } else {
-            $var[explode(" ", $row)[1]] = $var[$val[0]][$var[$val[1]]];
-          }
-        }
+        $var[$this->get($arg[0])] = json_encode($var[$this->get($arg[0])]);
+      } elseif ($m[1] == 'getValue') { 
+        $var[$setVar] = $var[$this->get($arg[0])][$this->get($arg[1])];
       }
     } elseif ($m[0] == 'mysql') {
       if ($m[1] == 'connect') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if ($this->isString($val[0]) && $this->isString($val[1]) && $this->isString($val[2])) {
-          if ($this->isString($val[3])) {
-            $var[explode(" ", $row)[1]] = new mysqli($this->cs($val[0]), $this->cs($val[1]), $this->cs($val[2]), $this->cs($val[3]));
-          } else {
-            $var[explode(" ", $row)[1]] = new mysqli($this->cs($val[0]), $this->cs($val[1]), $this->cs($val[2]), $var[$val[3]]);
-          }
-        }
+        $var[$setVar] = new mysqli($this->get($arg[0]), $this->get($arg[1]), $this->get($arg[2]), $this->get($arg[3]));
       } elseif ($m[1] == 'checkConnection') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        if (!$this->isString($com)) {
-          $var[explode(" ", $row)[1]] = $var[$com]->connect_error;
+        if ($this->get($arg[0])) {
+          $var[$setVar] = $var[$com]->connect_error;
         }
       } elseif ($m[1] == 'cmd' || $m[1] == 'parse' || $m[1] == 'query') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if (!$this->isString($val[0])) {
-          if ($this->isString($val[1])) {
-            $cMySQL = $this->cs($val[1]);
-          } else {
-            $cMySQL = $var[$val[1]];
+        $res = $var[$this->get($arg[0])]->query($this->get($arg[0]));
+        $returnArray = array();
+        if ($result->num_rows > 0) {
+          $count = 0;
+          while($row = $result->fetch_assoc()) {
+            $count++;
+            $returnArray[$count] = $row;
           }
-          $res = $var[$val[0]]->query($cMySQL);
-          $returnArray = array();
-          if ($result->num_rows > 0) {
-            $count = 0;
-            while($row = $result->fetch_assoc()) {
-              $count++;
-              $returnArray[$count] = $row;
-            }
-          } else {
-            $returnArray[0] = false;
-          }
-          $var[explode(" ", $row)[1]] = $returnArray;
+        } else {
+          $returnArray[0] = false;
         }
+        $var[$setVar] = $returnArray;
       }
     } elseif ($m[0] == 'HTTP') {
       if ($m[1] == 'get') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        if ($this->isString($com)) {
-          $var[explode(" ", $row)[1]] = file_get_contents($this->cs($com));
-        } else {
-          $var[explode(" ", $row)[1]] = file_get_contents($var[$com]);
-        }
+        $var[$setVar] = file_get_contents($var[$this->get($arg[0])]);
       } elseif ($m[1] == 'post') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if ($this->isString($val[0])) { 
-          $uri = $this->cs($val[0]);
-        } else {
-          $uri = $var[$val[0]];
-        }
-        $body = http_build_query($val[1]);
+        $body = http_build_query($arg[1]);
         $options = array(
             'http' => array(
                 'header'  => "Content-type: application/json\r\n",
@@ -249,7 +182,7 @@ class SmallCode {
             )
         );
         $context = stream_context_create($options);
-        $var[explode(" ", $row)[1]] = file_get_contents($uri, false, $context);
+        $var[$setVar] = file_get_contents($this->get($arg[0]), false, $context);
       }
     } elseif ($m[0] == 'session' && $m[1] == 'manager') {
       if ($m[2] == 'inizialize' || $m[2] == 'initialize') {
@@ -257,100 +190,52 @@ class SmallCode {
       } elseif ($m[2] == 'kill') {
         session_destroy();
       } elseif ($m[2] == 'set' || $m[2] == 'define') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if (!$this->isString($val[0])) {
-          if ($this->isString($val[1])) {
-            $_SESSION[$var[$val[0]]] = $this->cs($val[1]);
-          } else {
-            $_SESSION[$var[$val[0]]] = $var[$val[1]];
-          }
-        } else {
-          if ($this->isString($val[1])) {
-            $_SESSION[$this->cs($val[0])] = $this->cs($val[1]);
-          } else {
-            $_SESSION[$this->cs($val[0])] = $var[$val[1]];
-          }
-        }
+        $_SESSION[$this->get($arg[0])] = $this->get($arg[1]);
       } elseif ($m[2] == 'get') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        if ($this->isString($com)) {
-          $var[explode(" ", $row)[1]] = $_SESSION[$this->cs($com)];
-        } else {
-          $var[explode(" ", $row)[1]] = $_SESSION[$var[$com]];
-        }
+        $var[$setVar] = $_SESSION[$this->get($arg[0])];
       } elseif ($m[2] == 'check') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if ($this->isString($val[1])) {
-          $red = $this->cs($val[1]);
-        } else {
-          $red = $var[$val[1]];
-        }
-        if ($this->isString($val[0])) {
-          $st = $this->cs($val[0]);
-        } else {
-          $st = $var[$val[0]];
-        }
-        if (empty($_SESSION[$st])) {
-          header("Location: {$red}");
+        if (empty($_SESSION[$this->get($arg[0])])) {
+          header("Location: " . $this->get($arg[1]));
         }
       }
     } elseif ($m[0] == 'redirect') {
-      $b = explode('(', $row);
-      $c = explode(')', $b[1]);
-      $com = $c[0];
-      if ($this->isString($com)) {
-        $com = $this->cs($com);
-      } else {
-        $com = $var[$com];
-      }
-      header("Location: {$com}");
+      header("Location: " . $this->get($arg[0]));
     } elseif ($m[0] == 'globals') {
       if ($m[1] == 'set' || $m[1] == 'define') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if ($this->isString($val[1])) {
-          $string = $this->cs($val[1]);
-        } else {
-          $string = $var[$val[1]];
-        }
-        $GLOBALS[$this->cs($val[0])] = $string;
+        $GLOBALS[$this->get($arg[0])] = $this->get($arg[1]);
       } elseif ($m[1] == 'get') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $var[explode(" ", $row)[1]] = $GLOBALS[$this->cs($com)];
+        $var[$setVar] = $GLOBALS[$this->get($arg[0])];
       }
     } elseif ($m[0] == 'hash') {
       if ($m[1] == 'combine') {
-        $b = explode('(', $row);
-        $c = explode(')', $b[1]);
-        $com = $c[0];
-        $val = explode(', ', $com);
-        if ($this->isString($val[1])) {
-          $v = $this->cs($val[1]);
-        } else {
-          $v = $var[$val[1]];
-        }
-        $var[explode(" ", $row)[1]] = hash($this->cs($val[0]), $v);
+        $var[$setVar] = hash($this->get($arg[0]), $this->get($arg[1]));
       }
     } elseif ($m[0] == 'random') {
-      $b = explode('(', $row);
-      $c = explode(')', $b[1]);
-      $com = $c[0];
-      $val = explode(', ', $com);
-      $var[explode(" ", $row)[1]] = rand($this->cs($val[0]),  $this->cs($val[1]));
+      $var[$setVar] = rand($this->get($arg[0]),  $this->get($arg[1]));
+    } elseif (in_array(implode('.', $m), (array)$this->methods)) {
+      $var = $this->callCustomMethod(implode('.', $m), $var, $arg);
     }
+    $this->calledFromMethodClass = false;
     return $var;
+  }
+
+  protected function getInternalMethodFunction($method, $name) {
+    return $this->methods->list->{$method}->args->{$name};
+  }
+
+  protected function callCustomMethod($method, $var, $arg) {
+    $this->execMethod = (object)array('method' => $method, 'started' => true);
+    $m = $this->methods->list->{$method}; 
+    // System mapping
+    $protectedCounting = 0;
+    foreach ($m->args as $ar => $key) {
+      $m->args->{$ar} = $var[$this->get($arg[$protectedCounting])];
+      $protectedCounting++;
+    }
+    $this->execMethod->startLine = $m->start;
+    $this->execMethod->endLine = $m->end;
+    $this->returnCallFunction = $this->index;
+    $this->index = ($m->start - 1); 
   }
 
   protected function unificateString($arr, $v) {
@@ -374,6 +259,8 @@ class SmallCode {
   }
 
   public function returnFormattedOutput($values = '') {
+    // Impostiamo subito un valore
+    $this->methods = (object)array('enabled' => true, 'list' => (object)array());
     $m = file_get_contents($this->module);
     if (empty($m)) {
       echo "ParseCode ERROR: Module {$this->module} doesn't exists";
@@ -407,13 +294,32 @@ class SmallCode {
       if ($ll[0] == "//" || $ll[0] == "#") {
         continue;
       }
+
+      if (!empty($this->activeMethodDefinition) && $ll[0] != 'end') {
+        continue;
+      }
+
       if (!$start && $row == 'Parsing:()[') {
         $start = true;
       }
+ 
+      if ($this->nextStop) {
+        $this->index = $this->returnCallFunction+2;
+        $this->execMethod = '';
+        $this->nextStop = false;
+        continue;
+      }
+
+
+      if (is_object($this->execMethod) && $this->execMethod->started && $rows[$this->index+1] == 'end') {
+        $this->nextStop = true;
+      }
+
       if ($start && $row == ']//,') {
         $start = false;
         continue;
       }
+
       if ($start) {
         if ($start && !$this->inizializedIf) {
           $parseTh = true;
@@ -462,6 +368,10 @@ class SmallCode {
                 }  
               } elseif ($ll[3] == "file" || $ll[3] == 'HTTP') {
                 $var[$nameVar] == file_get_contents($ll[4]);
+              } elseif ($ll[3] == 'method' && $ll[4] == 'value') {
+                $m = $this->execMethod->method;
+                $var[$nameVar] = $this->getInternalMethodFunction($m, $ll[5]);
+                var_dump($var);
               }
             }
           } elseif ($ll[0] == "export") {
@@ -504,17 +414,43 @@ class SmallCode {
               $b = explode('}', $row);
               $str = str_replace($a[0], '', str_replace(end($b), '}', $row));
               $var[$ll[1]] = json_decode($str, true);
+            } elseif ($ll[2] == 'int') {
+              $var[$ll[1]] = $ll[3];
             }
           } elseif ($ll[0] == "get") {
             if ($ll[2] == "from") {
               if ($ll[3] == "method") {
-                $var = $this->parseMethod($this->unificateString($ll, 4), $row, $var);
+                $vv = explode(' ', $row)[1];
+                $var = $this->parseMethod($this->unificateString($ll, 4), $var, $vv);
               } elseif ($ll[3] == 'array') {
                 $arr = $ll[4];
                 $sys = explode('.', $arr);
                 $var[$ll[1]] = $var[$sys[0]][$sys[1]];
               }
             }
+          } elseif ($ll[0] == 'make') {
+            if ($ll[1] == 'method') {
+              // make method test.lol (var1, var2, var3) {
+              $name = $ll[2];
+              $values = explode(')', explode('(', $row)[1])[0];
+              $arg = explode(', ', $values);
+              $this->methods->list->{$name} = (object)array('type' => 'method_main1.0');
+              $this->methods->list->{$name}->definitionRowContent = $rows[$this->index];
+              $this->methods->list->{$name}->start = $this->index+1;
+              $this->methods->list->{$name}->args = (object)array();
+              foreach ($arg as $key) {
+                $this->methods->list->{$name}->args->{$key} = 'NULL';
+              }
+              $this->methods->list->{$name}->ended = false;
+              $this->activeMethodDefinition = $name;
+            }
+          } elseif ($ll[0] == 'end') {
+            if (!empty($this->activeMethodDefinition) && !$this->methods->list->{$this->activeMethodDefinition}->ended) {
+               $this->methods->list->{$this->activeMethodDefinition}->end = $this->index-1;
+               $this->methods->list->{$this->activeMethodDefinition}->ended = true;
+               $this->activeMethodDefinition = '';
+            }
+            continue;
           } elseif ($ll[0] == 'take') {
             $arr = $ll[2];
             $sys = explode('.', $arr);
@@ -551,8 +487,8 @@ class SmallCode {
             $z = explode(' then ', $tempRow);
             $var[$z[1]] = $text;
           } elseif ($ll[0] == "method") {
-            $var = $this->parseMethod(str_replace('method ', '', $row), $row, $var);
-          } elseif ($ll[0] == "->") {
+            $var = $this->parseMethod(str_replace('method ', '', $row), $var);
+          } elseif ($ll[0] == "->" || $ll[0] == 'return') {
             // Return statement
             if ($ll[1] == "toArray") {
               $returnArray = array();
@@ -580,13 +516,9 @@ class SmallCode {
               $return .= $var[$ll[2]];
             }
           } elseif ($ll[0] == 'print') {
-            if ($ll[1] == 'string') {
-              echo explode("'", $row)[1];
-            } elseif ($ll[1] == 'var') {
-              echo $var[$ll[2]];
-            } elseif ($ll[1] == 'dump') {
-              var_dump($var[$ll[2]]);
-            }
+            echo $this->get(str_replace('print ', '', $row), $var);
+          } elseif ($ll[0] == 'dump') {
+            var_dump($this->get(str_replace('print ', '', $row), $var));
           } elseif ($ll[0] == 'call') {
             if (!$this->isString($ll[1])) {
               require $var[$ll[1]];
