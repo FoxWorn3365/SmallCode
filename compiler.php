@@ -11,6 +11,7 @@
 namespace FoxWorn3365;
 
 class SmallCode {
+  public $smallcode = array('version' => '0.9', 'author' => 'FoxWorn3365', 'github' => 'https://github.com/FoxWorn3365/SmallCode', 'website' => 'https://smallcode.cf');
   public string $module;
   protected bool $inizializedIf = false;
   protected bool $startedIf = false;
@@ -184,6 +185,15 @@ class SmallCode {
         $context = stream_context_create($options);
         $var[$setVar] = file_get_contents($this->get($arg[0]), false, $context);
       }
+    } elseif ($m[0] == 'native') {
+        $this->smallcode = (object)$this->smallcode;
+      if ($m[1] == 'version') {
+        $var[$setVar] = $this->smallcode->version;
+      } elseif ($m[1] == 'author') {
+        $var[$setVar] = $this->smallcode->author;
+      } elseif ($m[1] == 'website') {
+        $var[$setVar] = $this->smallcode->website;
+      }
     } elseif ($m[0] == 'session' && $m[1] == 'manager') {
       if ($m[2] == 'inizialize' || $m[2] == 'initialize') {
         session_start();
@@ -213,7 +223,7 @@ class SmallCode {
     } elseif ($m[0] == 'random') {
       $var[$setVar] = rand($this->get($arg[0]),  $this->get($arg[1]));
     } elseif (in_array(implode('.', $m), (array)$this->methods)) {
-      $var = $this->callCustomMethod(implode('.', $m), $var, $arg);
+      $this->callCustomMethod(implode('.', $m), $var, $arg);
     }
     $this->calledFromMethodClass = false;
     return $var;
@@ -236,6 +246,7 @@ class SmallCode {
     $this->execMethod->endLine = $m->end;
     $this->returnCallFunction = $this->index;
     $this->index = ($m->start - 1); 
+    return $var;
   }
 
   protected function unificateString($arr, $v) {
@@ -290,6 +301,7 @@ class SmallCode {
       $row = str_replace('  ', '', $rows[$this->index]);
       $row = str_replace('||', '  ', $row);
       $ll = explode(' ', $row);
+      $clearcommand = str_replace($ll[0] . ' ', '', $row);
       $line = ($this->index + 1);
       if ($ll[0] == "//" || $ll[0] == "#") {
         continue;
@@ -371,7 +383,7 @@ class SmallCode {
               } elseif ($ll[3] == 'method' && $ll[4] == 'value') {
                 $m = $this->execMethod->method;
                 $var[$nameVar] = $this->getInternalMethodFunction($m, $ll[5]);
-                var_dump($var);
+
               }
             }
           } elseif ($ll[0] == "export") {
@@ -489,26 +501,7 @@ class SmallCode {
           } elseif ($ll[0] == "method") {
             $var = $this->parseMethod(str_replace('method ', '', $row), $var);
           } elseif ($ll[0] == "->" || $ll[0] == 'return') {
-            // Return statement
-            if ($ll[1] == "toArray") {
-              $returnArray = array();
-              $r = explode(' && ', $row);
-              $rc = str_replace("-> toArray ", "", $r[0]);
-              foreach ($r as $in) {
-                $a = explode('=>', $in);
-                $b = explode(' ', $a); 
-                if ($b[0] == 'string') {
-                   $returnArray[$a[0]] = $b[1];
-                } elseif ($b[0] == 'var') {
-                   $returnArray[$a[0]] = $var[$b[1]];
-                }
-              }
-              return $returnArray;
-            } elseif ($ll[1] == "toString") {
-              $return .= explode("'", $row)[1];
-            } elseif ($ll[1] == "toVar") {
-              $return .= $var[$ll[2]];
-            }
+            return $this->get($clearcommand);
           } elseif ($ll[0] == 'say') {
             if ($ll[1] == 'string') {
               $return .= explode("'", $row)[1];
