@@ -35,6 +35,7 @@ class SmallCode {
   protected bool $calledFromMethodClass = false;
   protected $single = array();
   protected $variableMethodCall = array();
+  protected $eventsActive = array();
 
   public function __construct($module) {
     $this->module = $module;
@@ -298,6 +299,7 @@ class SmallCode {
     $this->methods = (object)array('enabled' => true, 'list' => (object)array());
     $this->single = (object)array();
     $this->variableMethodCall = (object)array();
+    $this->eventsActive = (object)array();
 
     $m = file_get_contents($this->module);
     if (empty($m)) {
@@ -504,6 +506,36 @@ class SmallCode {
                $this->activeMethodDefinition = '';
             }
             continue;
+          } elseif ($ll[0] == 'event') {
+            // event change:quellocheè async file/input callback
+            if ($ll[2] == 'async') {
+              // Non lo metto nell'event loader, lo carico direttamente qua
+              $localExitVar = '';
+              while (empty($localExitVar)) {
+                $status = false;
+                $input = $var[$ll[3]];
+                if ($ll[1] == 'change:file') {
+                  if ($status == false) {
+                    $status = file_exists($input);
+                  } elseif ($status != file_exists($input)) {
+                    $localExitVar = true;
+                  }
+                } elseif ($ll[1] == 'change:content' || $ll[1] == 'change:http') {
+                  if ($status == 'false') {
+                    $status = file_get_contents($input);
+                  } elseif ($status != file_get_contents($input)) {
+                    $localExitVar = true;
+                  }
+                }
+              } 
+              $var = $this->parseMethod(str_replace($ll[0] . ' ' . $ll[1] . ' ' . $ll[2] . ' ' . $ll[3] . ' ', '', $row), $var, 'tempFoxReturnNotNull');
+            } elseif ($ll[2] == 'sync') {
+              $input = $var[$ll[3]];
+              $c = rand(0, 15555);
+              $this->eventsActive->{$c}->type = $ll[1];
+              $this->eventsActive->{$c}->source = $input;
+              $this->eventsActive->{$c}->callback = str_replace($ll[0] . ' ' . $ll[1] . ' ' . $ll[2] . ' ' . $ll[3] . ' ', '', $row);
+            }
           } elseif ($ll[0] == 'link' && $ll[2] == 'with') {
             $this->single->{$ll[1]} = $ll[3];
             $var[$ll[1]] = $ll[2];
