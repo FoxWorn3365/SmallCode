@@ -94,7 +94,7 @@ class SmallCode {
   }
 
   protected function parseMethod($string, $var, $setVar = 'tempFoxIntReturnNull') {
-    $this->calledFromMethodClass = true;
+    $this->calledFromMethodClass = false;
     $this->defineGetVar($var);
     $str = explode('(', $string);
     $m = explode('.', $str[0]); 
@@ -105,11 +105,13 @@ class SmallCode {
     if ($m[0] == 'array') {
       // LAVORIAMO CON GLI ARRAY
       if ($m[1] == 'getValue' || $m[1] == 'get') {
+        $this->calledFromMethodClass = true;
         // SINTASSI: array.getValue(<ARRAY>, <VALUE NAME>)
         $var[$setVar] = $var[$this->get($arg[0])][$this->get($arg[1])];
       } elseif ($m[1] == 'push') {
+        $this->calledFromMethodClass = true;
         // Recuperiamo subito le funzioni
-        $var[$this->get($arg[0])][$this->get($arg[1])] = $this->get($arg[2]);
+        $var[$this->get($arg[0])][$this->get($arg[1])] = $var[$this->get($arg[2])];
       } elseif ($m[1] == 'drop') {
         // Recuperiamo subito le funzioni
         $var[$this->get($arg[0])] = NULL;
@@ -117,7 +119,7 @@ class SmallCode {
         // Recuperiamo subito le funzioni
         $var[$setVar] = count($var[$this->get($arg[0])]);
       } elseif ($m[1] == 'print') {
-        foreach ($var[$this->get($arg[0])] as $key => $element) {
+        foreach ($this->get($arg[0]) as $key => $element) {
           echo "$key => $element ";
         }
       }
@@ -158,6 +160,7 @@ class SmallCode {
         $var[$setVar] = glob($this->get($arg[0]));
       }
     } elseif ($m[0] == 'json') {
+      $this->calledFromMethodClass = true;
       if ($m[1] == 'import') {
         $var[$this->get($arg[0])] = (array)json_decode($var[$this->get($arg[0])]);
       } elseif ($m[1] == 'export') {
@@ -173,6 +176,7 @@ class SmallCode {
           $var[$setVar] = $var[$com]->connect_error;
         }
       } elseif ($m[1] == 'cmd' || $m[1] == 'parse' || $m[1] == 'query') {
+        $this->calledFromMethodClass = true;
         $res = $var[$this->get($arg[0])]->query($this->get($arg[0]));
         $returnArray = array();
         if ($result->num_rows > 0) {
@@ -188,9 +192,10 @@ class SmallCode {
       }
     } elseif ($m[0] == 'HTTP') {
       if ($m[1] == 'get') {
+        $this->calledFromMethodClass = true;
         $var[$setVar] = file_get_contents($var[$this->get($arg[0])]);
       } elseif ($m[1] == 'post') {
-        $body = http_build_query($arg[1]);
+        $body = http_build_query($this->get($arg[1]));
         $options = array(
             'http' => array(
                 'header'  => "Content-type: application/json\r\n",
@@ -222,8 +227,10 @@ class SmallCode {
       } elseif ($m[2] == 'kill') {
         session_destroy();
       } elseif ($m[2] == 'set' || $m[2] == 'define') {
-        $_SESSION[$this->get($arg[0])] = $this->get($arg[1]);
+        $this->calledFromMethodClass = true;
+        $_SESSION[$this->get($arg[0])] = $var[$this->get($arg[1])];
       } elseif ($m[2] == 'get') {
+        $this->calledFromMethodClass = true;
         $var[$setVar] = $_SESSION[$this->get($arg[0])];
       } elseif ($m[2] == 'check') {
         if (empty($_SESSION[$this->get($arg[0])])) {
@@ -234,7 +241,8 @@ class SmallCode {
       header("Location: " . $this->get($arg[0]));
     } elseif ($m[0] == 'globals') {
       if ($m[1] == 'set' || $m[1] == 'define') {
-        $GLOBALS[$this->get($arg[0])] = $this->get($arg[1]);
+        $this->calledFromMethodClass = true;
+        $GLOBALS[$this->get($arg[0])] = $var[$this->get($arg[1])];
       } elseif ($m[1] == 'get') {
         $var[$setVar] = $GLOBALS[$this->get($arg[0])];
       }
@@ -469,7 +477,7 @@ class SmallCode {
               $str = explode("'", $row);
               $var[$ll[1]] = $str[1];
             } elseif ($ll[2] == "var") {
-              $var[$ll[1]] = $var[$ll[2]];
+              $var[$ll[1]] = $var[$ll[3]];
             } elseif ($ll[2] == "array") {
               $a = array();
               $b = explode("|", $row);
