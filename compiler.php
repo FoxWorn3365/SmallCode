@@ -12,6 +12,7 @@ namespace FoxWorn3365;
 
 class SmallCode {
   public $smallcode = array('version' => '0.9', 'author' => 'FoxWorn3365', 'github' => 'https://github.com/FoxWorn3365/SmallCode', 'website' => 'https://smallcode.cf');
+  public $config = array('events' => array('timeout' => 10, 'checkspeed' => 0.2));
   public string $module;
   protected bool $inizializedIf = false;
   protected bool $startedIf = false;
@@ -24,7 +25,6 @@ class SmallCode {
   protected bool $loopOpen = false;
   protected $loopElement;
   protected $index = 0;
-  protected $config;
   protected $spaceTracker = array();
   protected $tempVar;
   protected $methods = array();
@@ -39,9 +39,6 @@ class SmallCode {
 
   public function __construct($module) {
     $this->module = $module;
-    if (!empty($config)) {
-      $this->config = $config;
-    }
   }
 
   protected function isSingleQuoted($string) {
@@ -391,6 +388,28 @@ class SmallCode {
             $this->callCustomMethod(str_replace($vv . '.', '', $row), $var, $ar);
           } 
 
+          // Procediamo con l'elaborazione degli eventi sincroni
+          if (is_object($this->eventsActive) && !empty($this->eventsActive)) {
+            foreach ($this->eventsActive as $key => $sync) {
+              if (empty($sync->value)) {
+                if ($sync->type == 'change:file') {
+                  $this->eventsActive->{$key}->value = file_exists($sync->src);
+                } elseif ($sync->type == 'change:content' || $sync->type == 'change:http') {
+                  $this->eventsActive->{$key}->value = file_get_contents($sync->src);
+                }
+              } else {
+                if ($sync->type == 'change:file') {
+                  if ($sync->value == file_exists($sync->src)) {
+                    $var = $this->parseMethod($sync->callback, $var, 'tempFoxReturnNotNull');
+                  }
+                } elseif ($sync->type == 'change:content' || $sync->type == 'change:http') {
+                  if ($sync->value == file_get_contents($sync->src)) {
+                    $var = $this->parseMethod($sync->callback, $var, 'tempFoxReturnNotNull');
+                  }
+                }
+              }
+            }
+          }
           // inizio parsing
           if ($ll[0] == 'import') {
             $nameVar = $ll[1];
@@ -511,6 +530,7 @@ class SmallCode {
             if ($ll[2] == 'async') {
               // Non lo metto nell'event loader, lo carico direttamente qua
               $localExitVar = '';
+              $timenow = strtotime('now');
               while (empty($localExitVar)) {
                 $status = false;
                 $input = $var[$ll[3]];
@@ -527,6 +547,12 @@ class SmallCode {
                     $localExitVar = true;
                   }
                 }
+                // Check the time
+                if ((strtotime('now') - $timenow) >= $this->config['events']['timeout']) {
+                  $localExitVar = true;
+                }
+
+                sleep($this->config['events']['checkspeed']);
               } 
               $var = $this->parseMethod(str_replace($ll[0] . ' ' . $ll[1] . ' ' . $ll[2] . ' ' . $ll[3] . ' ', '', $row), $var, 'tempFoxReturnNotNull');
             } elseif ($ll[2] == 'sync') {
