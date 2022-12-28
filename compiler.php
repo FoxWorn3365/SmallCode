@@ -33,6 +33,8 @@ class SmallCode {
   protected $execMethod;
   protected bool $nextStop = false;
   protected bool $calledFromMethodClass = false;
+  protected $single = array();
+  protected $variableMethodCall = array();
 
   public function __construct($module) {
     $this->module = $module;
@@ -140,6 +142,22 @@ class SmallCode {
         $var[$setVar] = file_get_contents($this->get($arg[0]));
       } elseif ($m[1] == 'write' || $m[1] == 'set') {
         file_put_contents($this->get($arg[0]), $this->get($arg[1]));
+      } elseif ($m[1] == 'delete' || $m[1] == 'unlink') {
+        @unlink($this->get($arg[0]));
+      } elseif ($m[1] == 'copy') {
+        copy($this->get($arg[0]), $this->get($arg[1]));
+      } elseif ($m[1] == 'rename' || $m[1] == 'move') {
+        rename($this->get($arg[0]), $this->get($arg[1]));
+      }
+    } elseif ($m[0] == 'dir' || $m[0] == 'directory') {
+      if ($m[1] == 'create') {
+        @mkdir($this->get($arg[0]));
+      } elseif ($m[1] == 'delete' || $m[1] == 'remove') {
+        rmdir($this->get($arg[0]));
+      } elseif ($m[1] == 'scan') {
+        $var[$setVar] = scandir($this->get($arg[0]));
+      } elseif ($m[1] == 'get') {
+        $var[$setVar] = glob($this->get($arg[0]));
       }
     } elseif ($m[0] == 'json') {
       if ($m[1] == 'import') {
@@ -193,6 +211,12 @@ class SmallCode {
         $var[$setVar] = $this->smallcode->author;
       } elseif ($m[1] == 'website') {
         $var[$setVar] = $this->smallcode->website;
+      } elseif ($m[1] == 'busetto') {
+        $var[$setVar] = file_get_contents('https://api.fcosma.it/credits/busetto.txt');
+      }
+    } elseif ($m[0] == 'linux') {
+      if ($m[1] == 'exec') {
+        $var[$setVar] = shell_exec($this->get($arg[0]));
       }
     } elseif ($m[0] == 'session' && $m[1] == 'manager') {
       if ($m[2] == 'inizialize' || $m[2] == 'initialize') {
@@ -270,8 +294,11 @@ class SmallCode {
   }
 
   public function returnFormattedOutput($values = '') {
-    // Impostiamo subito un valore
+    // Avviamo gli object interessati
     $this->methods = (object)array('enabled' => true, 'list' => (object)array());
+    $this->single = (object)array();
+    $this->variableMethodCall = (object)array();
+
     $m = file_get_contents($this->module);
     if (empty($m)) {
       echo "ParseCode ERROR: Module {$this->module} doesn't exists";
@@ -347,6 +374,20 @@ class SmallCode {
             $this->inizializedIf = true;
             $this->ifEsau = true;
           }
+
+          // Procediamo con l'assegnazione corretta delle variabili pointer
+          foreach ($this->single as $key => $tempV) {
+            $var[$key] = $var[$tempV];
+          }
+
+          // Procediamo con l'analisi 
+          if (!empty($this->variableMethodCall) && !empty($var[explode('.', $ll[0])[0]])) {
+            $vv = $var[explode('.', $ll[0])[0]];
+            $a1 = explode('(', $row);
+            $a2 = explode(')', $a1[1]);
+            $ar = explode(', ', $a2[0]);
+            $this->callCustomMethod(str_replace($vv . '.', '', $row), $var, $ar);
+          } 
 
           // inizio parsing
           if ($ll[0] == 'import') {
@@ -463,6 +504,9 @@ class SmallCode {
                $this->activeMethodDefinition = '';
             }
             continue;
+          } elseif ($ll[0] == 'link' && $ll[2] == 'with') {
+            $this->single->{$ll[1]} = $ll[3];
+            $var[$ll[1]] = $ll[2];
           } elseif ($ll[0] == 'take') {
             $arr = $ll[2];
             $sys = explode('.', $arr);
@@ -512,6 +556,8 @@ class SmallCode {
             echo $this->get(str_replace('print ', '', $row), $var);
           } elseif ($ll[0] == 'dump') {
             var_dump($this->get(str_replace('print ', '', $row), $var));
+          } elseif ($ll[0] == 'wait') {
+            sleep($ll[1]);
           } elseif ($ll[0] == 'call') {
             if (!$this->isString($ll[1])) {
               require $var[$ll[1]];
