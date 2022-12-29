@@ -237,6 +237,14 @@ class SmallCode {
           header("Location: " . $this->get($arg[1]));
         }
       }
+    } elseif ($m[0] == 'string') {
+      if ($m[1] == 'replace') {
+        $var[$setVar] = str_replace($this->get($arg[0]), $this->get($arg[1]), $this->get($arg[2]));
+      } elseif ($m[1] == 'split') { 
+        $var[$setVar] = explode($this->get($arg[0]), $this->get($arg[1]));
+      } elseif ($m[1] == 'join') {
+        $var[$setVar] = explode($this->get($arg[0]), $this->get($arg[1]));
+      }
     } elseif ($m[0] == 'redirect') {
       header("Location: " . $this->get($arg[0]));
     } elseif ($m[0] == 'globals') {
@@ -709,7 +717,14 @@ class SmallCode {
             echo ' ';
           }
         }
-        echo "{$row}\n";
+        // Prima di stampare verifichiamo che non ci sia un if attivo
+        if (!$this->inizializedIf) {
+          echo "{$row}\n";
+        } elseif ($this->inizializedIf && $this->startedIf) {
+          echo "{$row}\n";
+        } else {
+          continue;
+        }
       }
       
       if ($this->inLoop && !$this->loopOpen && $this->loopEach == $this->loopMax - 1) {
