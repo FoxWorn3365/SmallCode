@@ -190,6 +190,12 @@ class SmallCode {
         }
         $var[$setVar] = $returnArray;
       }
+    } elseif ($m[0] == 'headers') {
+      if ($m[1] == 'set') {
+        header($this->get($arg[0])': ' . $this->get($arg[1]));
+      } elseif ($m[1] == 'get') {
+        $var[$setVar] = $_SERVER['HTTP_'. $this->get($arg[0])];
+      }
     } elseif ($m[0] == 'HTTP') {
       if ($m[1] == 'get') {
         $this->calledFromMethodClass = true;
@@ -243,7 +249,7 @@ class SmallCode {
       } elseif ($m[1] == 'split') { 
         $var[$setVar] = explode($this->get($arg[0]), $this->get($arg[1]));
       } elseif ($m[1] == 'join') {
-        $var[$setVar] = explode($this->get($arg[0]), $this->get($arg[1]));
+        $var[$setVar] = implode($this->get($arg[0]), $this->get($arg[1]));
       }
     } elseif ($m[0] == 'redirect') {
       header("Location: " . $this->get($arg[0]));
