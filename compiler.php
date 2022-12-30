@@ -36,6 +36,7 @@ class SmallCode {
   protected $single = array();
   protected $variableMethodCall = array();
   protected $eventsActive = array();
+  protected $loop = array();
 
   public function __construct($module) {
     $this->module = $module;
@@ -69,7 +70,7 @@ class SmallCode {
     $this->tempVar = $v; 
   }
 
-  protected function get($string, $var = false) {
+  protected function get($string, $var = false, $internal = true) {
     if (!$var) {
       $var = $this->tempVar;
     }
@@ -79,7 +80,7 @@ class SmallCode {
       $this->tempVar = $this->parseMethod(str_replace('method ', '', $string), $var, 'tempFoxReturnNotNull');
       return $this->tempVar['tempFoxReturnNotNull'];
     } elseif (!$this->isString($string) && stripos($string, 'method ') === false) {
-      if ($this->calledFromMethodClass) {
+      if ($this->calledFromMethodClass && $internal) {
         return $string;
       } else {
         return $var[$string];
@@ -111,7 +112,7 @@ class SmallCode {
       } elseif ($m[1] == 'push') {
         $this->calledFromMethodClass = true;
         // Recuperiamo subito le funzioni
-        $var[$this->get($arg[0])][$this->get($arg[1])] = $var[$this->get($arg[2])];
+        $var[$this->get($arg[0])][$this->get($arg[1], false, false)] = $var[$this->get($arg[2])];
       } elseif ($m[1] == 'drop') {
         // Recuperiamo subito le funzioni
         $var[$this->get($arg[0])] = NULL;
@@ -125,16 +126,10 @@ class SmallCode {
       }
     } elseif ($m[0] == 'loop') {
       if ($m[1] == 'getValue') {
-        $lCount = 0;
-        foreach ($this->loopElement as $key => $va) {
-          if ($lCount == $this->loopEach) {
-            if ($this->get($arg[0]) == 'key') {
-              $var[$setVar] = $key;
-            } elseif ($this->get($arg[0]) == 'value') {
-              $var[$setVar] = $va;
-            }
-          }
-          $lCount++;
+        if ($arg[0] == 'value' || $arg[0] == "'value'") {
+          $var[$setVar] = $this->loop->extractArgumentFromActiveLoop->value;
+        } elseif ($arg[0] == 'key' || $arg[0] == "'key'") {
+          $var[$setVar] = $this->loop->extractArgumentFromActiveLoop->key;
         }
       }
     } elseif ($m[0] == 'file') {
@@ -192,7 +187,7 @@ class SmallCode {
       }
     } elseif ($m[0] == 'headers') {
       if ($m[1] == 'set') {
-        header($this->get($arg[0])': ' . $this->get($arg[1]));
+        header($this->get($arg[0]) . ': ' . $this->get($arg[1]));
       } elseif ($m[1] == 'get') {
         $var[$setVar] = $_SERVER['HTTP_'. $this->get($arg[0])];
       }
@@ -249,7 +244,7 @@ class SmallCode {
       } elseif ($m[1] == 'split') { 
         $var[$setVar] = explode($this->get($arg[0]), $this->get($arg[1]));
       } elseif ($m[1] == 'join') {
-        $var[$setVar] = implode($this->get($arg[0]), $this->get($arg[1]));
+        $var[$setVar] = explode($this->get($arg[0]), $this->get($arg[1]));
       }
     } elseif ($m[0] == 'redirect') {
       header("Location: " . $this->get($arg[0]));
@@ -293,8 +288,19 @@ class SmallCode {
     return $var;
   }
 
+  protected function callLoopMethod($id) {
+    $this->index = $this->loop->methods->{$id}->start;
+    $iter = $this->loop->methods->{$id}->for;
+    $array = $this->loop->methods->{$id}->array;
+    $this->loop->extractArgumentFromActiveLoop->value = $array[$iter];
+    $this->loop->extractArgumentFromActiveLoop->key = $array[$iter];
+    $this->loop->started = true;
+    $this->loop->quit = $this->loop->methods->{$id}->end;
+    // continue;
+  }
+
   protected function unificateString($arr, $v) {
-    $string;
+    $string = '';
     for ($a = $v; $a < count($arr); $a++) {
       $string .= $arr[$a] . ' ';
     }
@@ -319,6 +325,12 @@ class SmallCode {
     $this->single = (object)array();
     $this->variableMethodCall = (object)array();
     $this->eventsActive = (object)array();
+    $this->loop = (object)$this->loop;
+    $this->loop->extractArgumentFromActiveLoop = (object)array();
+    $this->loop->methods = (object)array();
+    $this->loop->started = false;
+    $this->loop->definition = false;
+    $this->loop->quit = NULL;
 
     $m = file_get_contents($this->module);
     if (empty($m)) {
@@ -396,6 +408,17 @@ class SmallCode {
             $this->ifEsau = true;
           }
 
+         if ($this->loop->started && $this->loop->quit == $this->index && $rows[$this->index] == 'break') {
+           echo 'quot';
+           $this->loop->started = false;
+           $this->loop->quit = NULL;
+           continue;
+         }
+
+         if ($this->loop->definition && $ll[0] != 'break') {
+           continue;
+         }
+
           // Procediamo con l'assegnazione corretta delle variabili pointer
           foreach ($this->single as $key => $tempV) {
             $var[$key] = $var[$tempV];
@@ -432,6 +455,7 @@ class SmallCode {
               }
             }
           }
+
           // inizio parsing
           if ($ll[0] == 'import') {
             $nameVar = $ll[1];
@@ -493,6 +517,10 @@ class SmallCode {
             } elseif ($ll[2] == "var") {
               $var[$ll[1]] = $var[$ll[3]];
             } elseif ($ll[2] == "array") {
+              if ($ll[3] == 'empty') {
+                $var[$ll[1]] = array();
+              }
+
               $a = array();
               $b = explode("|", $row);
               $b = explode(" && ", $b[1]);
@@ -622,7 +650,7 @@ class SmallCode {
             }
             $z = explode(' then ', $tempRow);
             $var[$z[1]] = $text;
-          } elseif ($ll[0] == "method") {
+          } elseif ($ll[0] == "method") { 
             $var = $this->parseMethod(str_replace('method ', '', $row), $var);
           } elseif ($ll[0] == "->" || $ll[0] == 'return') {
             return $this->get($clearcommand);
@@ -635,7 +663,7 @@ class SmallCode {
           } elseif ($ll[0] == 'print') {
             echo $this->get(str_replace('print ', '', $row), $var);
           } elseif ($ll[0] == 'dump') {
-            var_dump($this->get(str_replace('print ', '', $row), $var));
+            var_dump($this->get(str_replace('dump ', '', $row), $var));
           } elseif ($ll[0] == 'wait') {
             sleep($ll[1]);
           } elseif ($ll[0] == 'call') {
@@ -644,6 +672,10 @@ class SmallCode {
             } else {
               require explode("'", $row)[1];
             }
+/*
+          } elseif ($ll[0] == 'next') {
+            $this->loop->methods->{$this->loop->active}->for++;
+*/
           } elseif ($ll[0] == 'parse') {
             if (!$this->isString($ll[1])) {
               $p = new SmallCode($var[$ll[1]]);
@@ -697,6 +729,35 @@ class SmallCode {
               $this->startedIf = true;
             }
           }
+        } elseif ($ll[0] == 'for' && $ll[1] == 'each') {
+          $id = rand(1, 1000);
+          $this->loop->active = $id;
+          $this->loop->definition = true;
+          $this->loop->methods->{$id} = (object)array();
+          $this->loop->methods->{$id}->arrayName = $ll[2];
+          $this->loop->methods->{$id}->array = $var[$ll[2]];
+          $this->loop->methods->{$id}->start = $this->index;
+          $this->loop->methods->{$id}->for = 0;
+          $this->loop->methods->{$id}->count = NULL;
+        } elseif ($ll[0] == 'break') {
+          $id = $this->loop->active;
+          if ($this->loop->methods->{$id}->for == ($this->loop->methods->{$id}->count - 1)) {
+            $this->loop->active = NULL;
+            $this->loop->started = false;
+            continue;
+          } elseif (!empty($id) && $this->loop->definition) {
+            $this->loop->definition = false;
+            $name = $this->loop->methods->{$id}->arrayName;
+            $this->loop->methods->{$id}->end = $this->index-1;
+            $this->loop->methods->{$id}->count = count($var[$name]);
+            $var = $this->callLoopMethod($id);
+            $this->loop->methods->{$id}->for++;
+          } elseif (!$this->loop->definition && $this->loop->started) {
+            $var = $this->callLoopMethod($id);
+            $this->loop->methods->{$id}->for++;
+          }         
+        } 
+/*
         } elseif ($ll[0] == 'for') {
           if ($ll[1] == 'each') {
             $this->countLoop++;
@@ -717,6 +778,7 @@ class SmallCode {
         } elseif ($ll[0] == 'break') {
           $this->loopOpen = false;
         }
+*/
       } else {
         if ($this->spaceTracker[$this->index] !== false) {
           for ($i = 0; $i < $this->spaceTracker[$this->index]; $i++) {
@@ -732,7 +794,7 @@ class SmallCode {
           continue;
         }
       }
-      
+/*      
       if ($this->inLoop && !$this->loopOpen && $this->loopEach == $this->loopMax - 1) {
         $this->inLoop = false;
       } elseif ($this->inLoop && !$this->loopOpen) {
@@ -741,6 +803,7 @@ class SmallCode {
       if ($this->inLoop && !$this->loopOpen && $this->loopEach) {
         $this->index = $this->loopOpenLine[$this->countLoop];
       }
+*/
     }
     return $return;
   }
