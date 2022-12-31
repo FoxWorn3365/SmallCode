@@ -15,6 +15,7 @@ class SmallCode {
   public $config = array('events' => array('timeout' => 10, 'checkspeed' => 0.2));
   public string $module;
   protected $if;
+  protected $istances = array();
   protected $index = 0;
   protected $spaceTracker = array();
   protected $tempVar;
@@ -154,6 +155,46 @@ class SmallCode {
         $var[$setVar] = scandir($this->get($arg[0]));
       } elseif ($m[1] == 'get') {
         $var[$setVar] = glob($this->get($arg[0]));
+      }
+    } elseif ($m[0] == 'storage') {
+      if ($m[1] == 'define') {
+        $this->istances[$this->get($arg[0])] = array();
+      } elseif ($m[1] == 'get') {
+        $var[$setVar] = $this->istances[$this->get($arg[0])][$this->get($arg[1])];
+      } elseif ($m[1] == 'set') {
+        $this->istances[$this->get($arg[0])][$this->get($arg[1])] = $this->get($arg[2]);
+      }
+    } elseif ($m[0] == 'math') {
+      if ($m[1] == 'operation') {
+        $operator = $this->get($arg[1]);
+        if ($operator == '+' || $operator == 'plus') {
+          $var[$setVar] = $this->get($arg[0]) + $this->get($arg[2]);
+        } elseif ($operator == '-' || $operator == 'minus') {
+          $var[$setVar] = $this->get($arg[0]) - $this->get($arg[2]);
+        } elseif ($operator == '*' || $operator == 'per') {
+          $var[$setVar] = $this->get($arg[0]) * $this->get($arg[2]);
+        } elseif ($operator == '/' || $operator == 'div') {
+          $var[$setVar] = $this->get($arg[0]) / $this->get($arg[2]);
+        } 
+      } elseif ($m[1] == 'complex') {
+        $var[$setVar] = eval('return: ' . $this->get($arg[0]));
+      }
+    } elseif ($m[0] == 'type') {
+      if ($m[1] == 'set') {
+        $type = $this->get($arg[1]);
+        if ($type == 'int') {
+          $var[$setVar] = (integer)$var[$arg[0]];
+        } elseif ($type == 'bool') {
+          $var[$setVar] = (boolean)$var[$arg[0]];
+        } elseif ($type == 'string') {
+          $var[$setVar] = (string)$var[$arg[0]];
+        } elseif ($type == 'array') {
+          $var[$setVar] = (array)$var[$arg[0]];
+        } elseif ($type == 'object') {
+          $var[$setVar] = (object)$var[$arg[0]];
+        }
+      } elseif ($m[1] == 'get') {
+        $var[$setVar] = gettype($var[$arg[0]]);
       }
     } elseif ($m[0] == 'json') {
       $this->calledFromMethodClass = true;
