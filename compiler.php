@@ -14,16 +14,7 @@ class SmallCode {
   public $smallcode = array('version' => '0.9', 'author' => 'FoxWorn3365', 'github' => 'https://github.com/FoxWorn3365/SmallCode', 'website' => 'https://smallcode.cf');
   public $config = array('events' => array('timeout' => 10, 'checkspeed' => 0.2));
   public string $module;
-  protected bool $inizializedIf = false;
-  protected bool $startedIf = false;
-  protected bool $ifEsau = false;
-  protected bool $inLoop = false;
-  protected int $countLoop = 0;
-  protected $loopEach;
-  protected $loopOpenLine = array();
-  protected $loopMax;
-  protected bool $loopOpen = false;
-  protected $loopElement;
+  protected $if;
   protected $index = 0;
   protected $spaceTracker = array();
   protected $tempVar;
@@ -162,6 +153,8 @@ class SmallCode {
         $var[$this->get($arg[0])] = json_encode($var[$this->get($arg[0])]);
       } elseif ($m[1] == 'getValue') { 
         $var[$setVar] = $var[$this->get($arg[0])][$this->get($arg[1])];
+      } elseif ($m[1] == 'getValueFromObject') {
+        $var[$setVar] = $var[$this->get($arg[0])]->{$this->get($arg[1])};
       }
     } elseif ($m[0] == 'mysql') {
       if ($m[1] == 'connect') {
@@ -193,8 +186,7 @@ class SmallCode {
       }
     } elseif ($m[0] == 'HTTP') {
       if ($m[1] == 'get') {
-        $this->calledFromMethodClass = true;
-        $var[$setVar] = file_get_contents($var[$this->get($arg[0])]);
+        $var[$setVar] = file_get_contents($this->get($arg[0]));
       } elseif ($m[1] == 'post') {
         $body = http_build_query($this->get($arg[1]));
         $options = array(
@@ -295,7 +287,6 @@ class SmallCode {
     $this->loop->extractArgumentFromActiveLoop->value = $array[$iter];
     $this->loop->extractArgumentFromActiveLoop->key = $array[$iter];
     $this->loop->started = true;
-    $this->loop->quit = $this->loop->methods->{$id}->end;
     // continue;
   }
 
@@ -331,24 +322,20 @@ class SmallCode {
     $this->loop->started = false;
     $this->loop->definition = false;
     $this->loop->quit = NULL;
+    $this->if = (object)array('active' => false, 'reasoned' => NULL, 'shutdown' => NULL);
 
     $m = file_get_contents($this->module);
     if (empty($m)) {
       echo "ParseCode ERROR: Module {$this->module} doesn't exists";
       exit;
     }
+
     // Impostiamo delle variabili iniziali
     $return = '';
     $started = false;
     $finished = false;
-    $moduleInfoStart = false;
-    $moduleInfoFinish = false;
     $start = false;
-    $moduleInfo;
-    $progen;
     $ll;
-    $nextNot;
-    $progenEnd = false;
     $parseTh = true;
     $var = array();
     // Procediamo con la sintassi
@@ -382,40 +369,60 @@ class SmallCode {
         continue;
       }
 
-
       if (is_object($this->execMethod) && $this->execMethod->started && $rows[$this->index+1] == 'end') {
         $this->nextStop = true;
       }
+
+      if ($this->if->active && !$this->if->reasoned && ($row != 'but' && $row != 'or' && $row != 'catch')) {
+        continue;
+      }
+
+/*
+      if ($this->if->active && !$this->if->reasoned && !$this->if->shutdown && $row == 'but') {
+        $this->reasoned = true;
+      }
+
+      if ($this->if->active) {
+        $start = true;
+      }
+*/
 
       if ($start && $row == ']//,') {
         $start = false;
         continue;
       }
-
+   
+      $parseTh = false;
       if ($start) {
-        if ($start && !$this->inizializedIf) {
+        if ($start && !$this->if->active) {
           $parseTh = true;
-        } elseif ($start && $this->inizializedIf && $this->startedIf) {
+        } elseif ($start && $this->if->active && $this->if->reasoned) {
           $parseTh = true;
         } else {
           $parseTh = false;
         }
 
         if ($parseTh) {
-          if ($this->startedIf && (explode(' ', $rows[$line])[0] == 'but' || explode(' ', $rows[$line])[0] == 'or')) {
-            $this->startedIf = false;
-            $this->inizializedIf = true;
-            $this->ifEsau = true;
+          if ($this->if->active && ($ll[0] == 'but' || $ll[0] == 'or')) {
+            $this->if->reasoned = false;
+            $this->if->active = true;
+            $this->if->shutdown = true;
+            continue;
           }
 
          if ($this->loop->started && $this->loop->quit == $this->index && $rows[$this->index] == 'break') {
-           echo 'quot';
            $this->loop->started = false;
            $this->loop->quit = NULL;
            continue;
          }
 
          if ($this->loop->definition && $ll[0] != 'break') {
+           continue;
+         } elseif ($this->loop->definition && $ll[0] == 'break') {
+           $this->loop->definition = false;
+           $looop = $this->loop->active;
+           $var = $this->callLoopMethod($looop);
+           $this->loop->methods->{$looop}->for++;
            continue;
          }
 
@@ -664,6 +671,12 @@ class SmallCode {
             echo $this->get(str_replace('print ', '', $row), $var);
           } elseif ($ll[0] == 'dump') {
             var_dump($this->get(str_replace('dump ', '', $row), $var));
+          } elseif ($ll[0] == 'math') {
+            if ($ll[1] == 'increase') {
+              $var[$ll[2]]++;
+            } elseif ($ll[1] == 'decrease') {
+              $var[$ll[2]]--;
+            }
           } elseif ($ll[0] == 'wait') {
             sleep($ll[1]);
           } elseif ($ll[0] == 'call') {
@@ -692,42 +705,41 @@ class SmallCode {
           }
         }
 
-        if ($ll[0] == "catch" && $start && $this->inizializedIf) {
-          $this->inizializedIf = false;
-        } elseif ($ll[0] == "but" && $this->inizializedIf && !$this->startedIf && !$this->ifEsau && $start) {
-           $this->startedIf = true;
+        if ($ll[0] == "catch" && $start && $this->if->active) {
+          $this->if->active = false;
+        } elseif ($ll[0] == "but" && $this->if->active && !$this->if->reasoned && !$this->if->shutdown && $start) {
+           $this->if->reasoned = true;
            continue;
         } elseif (($ll[0] == "if" || $ll[0] == "or") && $start) {
           if ($ll[0] == "or") {
-            $this->startedIf = false;
+            $this->if->reasoned = false;
           }
-          if ($this->isString($ll[3])) {
-            $str = explode("'", $row)[1];
-          } else {
-            $str = $var[$ll[3]];
-          } 
+          $str = $this->get($ll[3]);
  
-          $this->inizializedIf = true;
+          $this->if->active = true;
+          $this->if->reasoned = false;
           if ($ll[2] == 'as' || $ll[2] == 'is') {
             if ($var[$ll[1]] == $str) {
-              $this->startedIf = true;
+              $this->if->reasoned = true;
             }
           } elseif ($ll[2] == 'not') {
             if ($var[$ll[1]] != $str) {
-              $this->startedIf = true;
+              $this->if->reasoned = true;
             }
           } elseif ($ll[2] == 'maj') {
             if ($var[$ll[1]] > $str) {
-              $this->startedIf = true;
+              $this->if->reasoned = true;
             }
           } elseif ($ll[2] == 'min') {
             if ($var[$ll[1]] < $str) {
-              $this->startedIf = true;
+              $this->if->reasoned = true;
             }
           } elseif ($ll[2] == 'empty') {
-            if (empty($var[$ll[1]])) {
-              $this->startedIf = true;
+            if (empty($var[$ll[1]])) { 
+              $this->if->reasoned = true;
             }
+          } else {
+            $this->if->active = false;
           }
         } elseif ($ll[0] == 'for' && $ll[1] == 'each') {
           $id = rand(1, 1000);
@@ -738,13 +750,19 @@ class SmallCode {
           $this->loop->methods->{$id}->array = $var[$ll[2]];
           $this->loop->methods->{$id}->start = $this->index;
           $this->loop->methods->{$id}->for = 0;
-          $this->loop->methods->{$id}->count = NULL;
+          $this->loop->methods->{$id}->count = count($var[$ll[2]]);
         } elseif ($ll[0] == 'break') {
           $id = $this->loop->active;
-          if ($this->loop->methods->{$id}->for == ($this->loop->methods->{$id}->count - 1)) {
+          if ($this->loop->methods->{$id}->count == 0) {
             $this->loop->active = NULL;
             $this->loop->started = false;
             continue;
+          }
+          if (!empty($this->loop->active) && !$this->loop->definition && $this->loop->methods->{$id}->for == $this->loop->methods->{$id}->count) {
+            $this->loop->active = NULL;
+            $this->loop->started = false;
+            continue;
+/*
           } elseif (!empty($id) && $this->loop->definition) {
             $this->loop->definition = false;
             $name = $this->loop->methods->{$id}->arrayName;
@@ -752,33 +770,12 @@ class SmallCode {
             $this->loop->methods->{$id}->count = count($var[$name]);
             $var = $this->callLoopMethod($id);
             $this->loop->methods->{$id}->for++;
+*/
           } elseif (!$this->loop->definition && $this->loop->started) {
             $var = $this->callLoopMethod($id);
             $this->loop->methods->{$id}->for++;
           }         
-        } 
-/*
-        } elseif ($ll[0] == 'for') {
-          if ($ll[1] == 'each') {
-            $this->countLoop++;
-            // IF FOREACH
-            $candidates = explode(')', explode('(', $row)[1])[0];
-            $c = explode(' per ', $candidates);
-            if (!$this->isString($c[0])) {
-              $array = $var[$c[0]];
-              // Procediamo con il loop
-              $this->loopElement = $array;
-              $this->inLoop = true;
-              $this->loopEach = 0;
-              $this->loopOpen = true;
-              $this->loopMax = count($array);
-              $this->loopOpenLine[$this->countLoop] = $this->index;
-            }
-          }
-        } elseif ($ll[0] == 'break') {
-          $this->loopOpen = false;
         }
-*/
       } else {
         if ($this->spaceTracker[$this->index] !== false) {
           for ($i = 0; $i < $this->spaceTracker[$this->index]; $i++) {
@@ -786,24 +783,14 @@ class SmallCode {
           }
         }
         // Prima di stampare verifichiamo che non ci sia un if attivo
-        if (!$this->inizializedIf) {
+        if (!$this->if->active) {
           echo "{$row}\n";
-        } elseif ($this->inizializedIf && $this->startedIf) {
+        } elseif ($this->if->active && $this->if->reasoned) {
           echo "{$row}\n";
         } else {
           continue;
         }
       }
-/*      
-      if ($this->inLoop && !$this->loopOpen && $this->loopEach == $this->loopMax - 1) {
-        $this->inLoop = false;
-      } elseif ($this->inLoop && !$this->loopOpen) {
-        $this->loopEach++;
-      }
-      if ($this->inLoop && !$this->loopOpen && $this->loopEach) {
-        $this->index = $this->loopOpenLine[$this->countLoop];
-      }
-*/
     }
     return $return;
   }
