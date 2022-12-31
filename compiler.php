@@ -122,6 +122,16 @@ class SmallCode {
         } elseif ($arg[0] == 'key' || $arg[0] == "'key'") {
           $var[$setVar] = $this->loop->extractArgumentFromActiveLoop->key;
         }
+      } elseif ($m[1] == 'localStorage') {
+        if ($m[2] == 'set') {
+          $this->loop->localStorage->{$this->get($arg[0])} = $this->get($arg[1]);
+        } elseif ($m[2] == 'get') {
+          $var[$setVar] = $this->loop->localStorage->{$this->get($arg[0])};
+        } elseif ($m[2] == 'merge') {
+          foreach ($this->loop->localStorage as $v) {
+            $var[$v] = $this->loop->localStorage->{$v};
+          }
+        }
       }
     } elseif ($m[0] == 'file') {
       if ($m[1] == 'open' || $m[1] == 'get') {
@@ -323,6 +333,7 @@ class SmallCode {
     $this->loop->definition = false;
     $this->loop->quit = NULL;
     $this->if = (object)array('active' => false, 'reasoned' => NULL, 'shutdown' => NULL);
+    $this->loop->localStorage = (object)array();
 
     $m = file_get_contents($this->module);
     if (empty($m)) {
@@ -420,6 +431,7 @@ class SmallCode {
            continue;
          } elseif ($this->loop->definition && $ll[0] == 'break') {
            $this->loop->definition = false;
+           $this->loop->externalVar = $var;
            $looop = $this->loop->active;
            $var = $this->callLoopMethod($looop);
            $this->loop->methods->{$looop}->for++;
@@ -498,7 +510,8 @@ class SmallCode {
               } elseif ($ll[3] == 'method' && $ll[4] == 'value') {
                 $m = $this->execMethod->method;
                 $var[$nameVar] = $this->getInternalMethodFunction($m, $ll[5]);
-
+              } elseif ($ll[3] == 'varchar') {
+                $var[$nameVar] = $this->loop->externalVar[$ll[4]];
               }
             }
           } elseif ($ll[0] == "export") {
@@ -521,6 +534,8 @@ class SmallCode {
             if ($ll[2] == "string") {
               $str = explode("'", $row);
               $var[$ll[1]] = $str[1];
+            } elseif ($ll[2] == 'int') {
+              $var[$ll[1]] = (int)$ll[3];
             } elseif ($ll[2] == "var") {
               $var[$ll[1]] = $var[$ll[3]];
             } elseif ($ll[2] == "array") {
@@ -545,8 +560,6 @@ class SmallCode {
               $b = explode('}', $row);
               $str = str_replace($a[0], '', str_replace(end($b), '}', $row));
               $var[$ll[1]] = json_decode($str, true);
-            } elseif ($ll[2] == 'int') {
-              $var[$ll[1]] = $ll[3];
             }
           } elseif ($ll[0] == "get") {
             if ($ll[2] == "from") {
@@ -651,7 +664,7 @@ class SmallCode {
             $text = explode(']', explode('[', $row)[1])[0];
             $tempRow = $row;
             foreach ($var as $el => $val) {
-              if (!is_array($val)) {
+              if (!is_array($val) && !is_object($val)) {
                 $text = str_replace('{' . $el . '}', $val, $text);
               }
             }
