@@ -134,6 +134,12 @@ class SmallCode {
           }
         }
       }
+    } elseif ($m[0] == 'url') {
+      if ($m[1] == 'get') {
+        $var[$setVar] = $_GET[$this->get($arg[0])];
+      } elseif ($m[1] == 'post') {
+        $var[$setVar] = $_POST[$this->get($arg[0])];
+      }
     } elseif ($m[0] == 'file') {
       if ($m[1] == 'open' || $m[1] == 'get') {
         $var[$setVar] = file_get_contents($this->get($arg[0]));
@@ -321,13 +327,15 @@ class SmallCode {
     // System mapping
     $protectedCounting = 0;
     foreach ($m->args as $ar => $key) {
-      $m->args->{$ar} = $var[$this->get($arg[$protectedCounting])];
+      // var_dump($ar, $key);
+      $m->args->{$ar} = $this->get($arg[$protectedCounting]);
       $protectedCounting++;
     }
     $this->execMethod->startLine = $m->start;
     $this->execMethod->endLine = $m->end;
     $this->returnCallFunction = $this->index;
     $this->index = ($m->start - 1); 
+    $this->methods->list->{$method} = $m;
     return $var;
   }
 
@@ -402,7 +410,7 @@ class SmallCode {
       $ll = explode(' ', $row);
       $clearcommand = str_replace($ll[0] . ' ', '', $row);
       $line = ($this->index + 1);
-      if ($ll[0] == "//" || $ll[0] == "#") {
+      if ($ll[0] == "//" || $ll[0] == "#" || $ll[0] == '@') {
         continue;
       }
 
@@ -571,6 +579,13 @@ class SmallCode {
                 }
               }
             }
+          } elseif ($ll[0] == "debug") {
+            var_dump($this);
+            exit;
+          } elseif ($ll[0] == "methoddebug") {
+            $m = $this->execMethod->method;
+            var_dump($this->methods->list->{$m}->args);
+            exit;
           } elseif ($ll[0] == "define") {
             if ($ll[2] == "string") {
               $str = explode("'", $row);
@@ -611,6 +626,14 @@ class SmallCode {
                 $arr = $ll[4];
                 $sys = explode('.', $arr);
                 $var[$ll[1]] = $var[$sys[0]][$sys[1]];
+              } elseif ($ll[3] == "lib") {
+                $methods = explode('.', str_replace("get from lib ", "", $row));
+                $args = explode(')', explode('(', $row)[1])[0];
+                $postArgs = [];
+                foreach (explode(', ', $args) as $arg) {
+                  array_push($postArgs, $this->get($arg, $var));
+                }
+                $var[$ll[1]] = $var[$methods[0]]->$methods[1]($postArgs);
               }
             }
           } elseif ($ll[0] == 'make') {
@@ -688,6 +711,30 @@ class SmallCode {
               $var[$sys[0]][$sys[1]] = $var[$ll[1]];
             } else {
               $var[$sys[0]][$sys[1]] = $this->cs($str[1]);
+            }
+          } elseif ($ll[0] == "lib_manager") {
+            if ($ll[1] == "include") {
+              $str = str_replace("lib_manager include ", "", str_replace("'", "", $row));
+              require $str;
+            } elseif ($ll[1] == "use" && $ll[3] == "as") {
+              $lib = $ll[2];
+              $v = $ll[4];
+              $var[$v] = (new $lib());
+            }
+          } elseif ($ll[0] == "lib") {
+            $methods = explode(".", str_replace("lib ", "", $row));
+            $fun = $methods[1];
+            if (stripos($fun, '(') !== false) {
+              // loading a function with args
+              $args = explode(')', explode('(', $fun)[1])[0];
+              $sendArgs = [];
+              foreach (explode(', ', $args) as $arg) {
+                array_push($sendArgs, $this->get($arg, $var));
+              }
+              $nm = explode('(', $fun)[0];
+              $var[$methods[0]]->$nm($sendArgs);
+            } else {
+              $var[$methods[0]]->$fun;
             }
           } elseif ($ll[0] == "combine") {
             $a = explode('(', $row);
