@@ -489,7 +489,9 @@ class SmallCode {
 
           // Procediamo con l'assegnazione corretta delle variabili pointer
           foreach ($this->single as $key => $tempV) {
-            $var[$key] = $var[$tempV];
+            if ($tempV != NULL) {
+              $var[$key] = $var[$tempV];
+            }
           }
 
           // Procediamo con l'analisi 
@@ -699,6 +701,8 @@ class SmallCode {
           } elseif ($ll[0] == 'link' && $ll[2] == 'with') {
             $this->single->{$ll[1]} = $ll[3];
             $var[$ll[1]] = $ll[2];
+          } elseif ($ll[0] == 'unlink') {
+            $this->single->{$ll[1]} = NULL;
           } elseif ($ll[0] == 'take') {
             $arr = $ll[2];
             $sys = explode('.', $arr);
