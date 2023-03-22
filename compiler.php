@@ -605,7 +605,7 @@ class SmallCode {
               $b = explode("|", $row);
               $b = explode(" && ", $b[1]);
               foreach ($b as $val) {
-                $val = explode(' of ', $val);
+                $val = explode(' as ', $val);
                 if ($this->isString($val[1])) {
                   $a[$val[0]] = explode("'", $val[1])[1];
                 } else {
